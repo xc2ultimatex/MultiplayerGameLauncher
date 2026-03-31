@@ -61,10 +61,14 @@ public partial class Form1 : Form
     private async Task EnsureSettingsFileExistsAsync()
     {
         if (File.Exists(settingsPath))
+        {
+            HideFileIfPresent(settingsPath);
             return;
+        }
 
         string json = JsonSerializer.Serialize(LauncherSettings.Default, JsonOptions.WriteIndented);
         await File.WriteAllTextAsync(settingsPath, json);
+        HideFileIfPresent(settingsPath);
     }
 
     private async Task<LauncherSettings> LoadSettingsAsync()
@@ -212,5 +216,17 @@ public partial class Form1 : Form
     private void closeButton_Click(object sender, EventArgs e)
     {
         Close();
+    }
+
+    private static void HideFileIfPresent(string path)
+    {
+        if (!File.Exists(path))
+            return;
+
+        FileAttributes attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.Hidden) == 0)
+        {
+            File.SetAttributes(path, attributes | FileAttributes.Hidden);
+        }
     }
 }

@@ -50,7 +50,36 @@ The launcher compares the remote `version` against the installed `Game/version.t
 
 1. Publish a Windows build to the dev host `payload` folder.
 2. Update `manifest.json` with the new version string.
-3. Give users the launcher build output.
-4. Users run `MultiplayerLauncher.exe`.
+3. Publish the launcher for distribution.
+4. Give users the published `MultiplayerLauncher.exe`.
+5. Users run `MultiplayerLauncher.exe`.
+
+## Publishing a user-facing exe
+
+From the repo root, run:
+
+```powershell
+.\Publish-Launcher.ps1
+```
+
+This creates a distributable Windows application in `dist\MultiplayerLauncher\`.
+The file you hand to users is:
+
+```text
+dist\MultiplayerLauncher\MultiplayerLauncher.exe
+```
+
+That published `.exe` is the correct user-facing entry point. Users should not run the source checkout or a shortcut that points into `bin\Release\...` on a machine that has never built the project.
+On first run, the launcher creates its support files beside the exe and marks them hidden so the visible item in the folder remains the application.
+
+## Running from a fresh source checkout
+
+For developers working from source on a fresh machine, use `MultiplayerLauncher.cmd` from the repo root instead.
+
+The script:
+
+- creates `bin\Release\net8.0-windows\win-x64` if it does not exist
+- builds the launcher automatically when `MultiplayerLauncher.exe` is missing
+- starts the built launcher
 
 You can automate step 1 and step 2 with [Publish-LatestBuild.ps1](c:/Users/Corey/Documents/MultiplayerPrototype/BuildTools/Publish-LatestBuild.ps1).

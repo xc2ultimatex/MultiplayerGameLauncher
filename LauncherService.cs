@@ -12,6 +12,8 @@ internal static class LauncherService
         string localVersionPath = Path.Combine(localGameDirectory, settings.LocalVersionFileName);
         string? defaultLaunchPath = ResolveLaunchPath(localGameDirectory, settings.GameExecutableRelativePath);
 
+        HideDirectoryIfPresent(localGameDirectory);
+
         if (string.IsNullOrWhiteSpace(sourceDirectory) || sourceDirectory.Contains("DEV-MACHINE", StringComparison.OrdinalIgnoreCase))
         {
             return new LauncherStatus
@@ -103,6 +105,7 @@ internal static class LauncherService
             string backupDirectory = Path.Combine(stagingRoot, $"backup-{Guid.NewGuid():N}");
 
             Directory.CreateDirectory(stagingRoot);
+            HideDirectoryIfPresent(stagingRoot);
             CopyDirectory(remotePayloadDirectory, stagingDirectory);
 
             string stagedVersionFile = Path.Combine(stagingDirectory, settings.LocalVersionFileName);
@@ -117,6 +120,7 @@ internal static class LauncherService
                 }
 
                 Directory.Move(stagingDirectory, localGameDirectory);
+                HideDirectoryIfPresent(localGameDirectory);
 
                 if (Directory.Exists(backupDirectory))
                 {
@@ -250,6 +254,18 @@ internal static class LauncherService
             string destinationPath = Path.Combine(destinationDirectory, relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
             File.Copy(filePath, destinationPath, true);
+        }
+    }
+
+    private static void HideDirectoryIfPresent(string path)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        FileAttributes attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.Hidden) == 0)
+        {
+            File.SetAttributes(path, attributes | FileAttributes.Hidden);
         }
     }
 }
