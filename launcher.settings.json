@@ -1,5 +1,5 @@
 {
-  "updateSourceDirectory": "\\\\DESKTOP-UABBC1H\\MultiplayerPrototypeBuilds\\Latest",
+  "updateSourceDirectory": "http://74.128.161.157:8080/Latest",
   "manifestFileName": "manifest.json",
   "packageDirectoryName": "payload",
   "gameDirectoryName": "Game",

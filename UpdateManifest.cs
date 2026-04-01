@@ -10,6 +10,9 @@ public sealed class UpdateManifest
     [JsonPropertyName("packageDirectory")]
     public string? PackageDirectory { get; init; }
 
+    [JsonPropertyName("packageArchive")]
+    public string? PackageArchive { get; init; }
+
     [JsonPropertyName("launchExecutable")]
     public string? LaunchExecutable { get; init; }
 }

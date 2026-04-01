@@ -1,10 +1,14 @@
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Net;
 using System.Text.Json;
 
 namespace MultiplayerLauncher;
 
 internal static class LauncherService
 {
+    private static readonly HttpClient HttpClient = new();
+
     public static async Task<LauncherStatus> CheckForUpdatesAsync(string launcherRoot, LauncherSettings settings)
     {
         string sourceDirectory = settings.UpdateSourceDirectory.Trim();
@@ -26,8 +30,8 @@ internal static class LauncherService
             };
         }
 
-        string manifestPath = Path.Combine(sourceDirectory, settings.ManifestFileName);
-        if (!File.Exists(manifestPath))
+        UpdateManifest? manifest = await TryLoadManifestAsync(sourceDirectory, settings.ManifestFileName);
+        if (manifest is null)
         {
             return new LauncherStatus
             {
@@ -40,7 +44,6 @@ internal static class LauncherService
             };
         }
 
-        UpdateManifest manifest = await LoadManifestAsync(manifestPath);
         string launchExecutableRelativePath = string.IsNullOrWhiteSpace(manifest.LaunchExecutable)
             ? settings.GameExecutableRelativePath
             : manifest.LaunchExecutable.Trim();
@@ -71,10 +74,11 @@ internal static class LauncherService
             throw new InvalidOperationException("Launcher settings are not configured.");
 
         if (!status.RemoteManifestAvailable)
-            throw new FileNotFoundException("Remote manifest not found.", Path.Combine(settings.UpdateSourceDirectory, settings.ManifestFileName));
+            throw new FileNotFoundException("Remote manifest not found.", BuildSourceLocation(settings.UpdateSourceDirectory, settings.ManifestFileName));
 
-        string manifestPath = Path.Combine(settings.UpdateSourceDirectory, settings.ManifestFileName);
-        UpdateManifest manifest = await LoadManifestAsync(manifestPath);
+        UpdateManifest? manifest = await TryLoadManifestAsync(settings.UpdateSourceDirectory, settings.ManifestFileName);
+        if (manifest is null)
+            throw new FileNotFoundException("Remote manifest not found.", BuildSourceLocation(settings.UpdateSourceDirectory, settings.ManifestFileName));
 
         string packageDirectoryName = string.IsNullOrWhiteSpace(manifest.PackageDirectory)
             ? settings.PackageDirectoryName
@@ -83,10 +87,6 @@ internal static class LauncherService
         string launchExecutableRelativePath = string.IsNullOrWhiteSpace(manifest.LaunchExecutable)
             ? settings.GameExecutableRelativePath
             : manifest.LaunchExecutable.Trim();
-
-        string remotePayloadDirectory = Path.Combine(settings.UpdateSourceDirectory, packageDirectoryName);
-        if (!Directory.Exists(remotePayloadDirectory))
-            throw new DirectoryNotFoundException($"Remote payload directory was not found: {remotePayloadDirectory}");
 
         string localGameDirectory = Path.Combine(launcherRoot, settings.GameDirectoryName);
         string localVersionPath = Path.Combine(localGameDirectory, settings.LocalVersionFileName);
@@ -106,7 +106,26 @@ internal static class LauncherService
 
             Directory.CreateDirectory(stagingRoot);
             HideDirectoryIfPresent(stagingRoot);
-            CopyDirectory(remotePayloadDirectory, stagingDirectory);
+
+            if (IsHttpSource(settings.UpdateSourceDirectory))
+            {
+                await DownloadAndExtractPackageAsync(
+                    settings.UpdateSourceDirectory,
+                    manifest,
+                    packageDirectoryName,
+                    launchExecutableRelativePath,
+                    settings.LocalVersionFileName,
+                    stagingRoot,
+                    stagingDirectory);
+            }
+            else
+            {
+                string remotePayloadDirectory = Path.Combine(settings.UpdateSourceDirectory, packageDirectoryName);
+                if (!Directory.Exists(remotePayloadDirectory))
+                    throw new DirectoryNotFoundException($"Remote payload directory was not found: {remotePayloadDirectory}");
+
+                CopyDirectory(remotePayloadDirectory, stagingDirectory);
+            }
 
             string stagedVersionFile = Path.Combine(stagingDirectory, settings.LocalVersionFileName);
             Directory.CreateDirectory(Path.GetDirectoryName(stagedVersionFile)!);
@@ -169,14 +188,131 @@ internal static class LauncherService
         });
     }
 
+    private static async Task<UpdateManifest?> TryLoadManifestAsync(string sourceDirectory, string manifestFileName)
+    {
+        if (IsHttpSource(sourceDirectory))
+        {
+            try
+            {
+                Uri manifestUri = BuildSourceUri(sourceDirectory, manifestFileName);
+                return await LoadManifestAsync(manifestUri);
+            }
+            catch (HttpRequestException)
+            {
+                return null;
+            }
+            catch (TaskCanceledException)
+            {
+                return null;
+            }
+        }
+
+        string manifestPath = Path.Combine(sourceDirectory, manifestFileName);
+        if (!File.Exists(manifestPath))
+            return null;
+
+        return await LoadManifestAsync(manifestPath);
+    }
+
     private static async Task<UpdateManifest> LoadManifestAsync(string manifestPath)
     {
         string json = await File.ReadAllTextAsync(manifestPath);
+        return ParseManifest(json);
+    }
+
+    private static async Task<UpdateManifest> LoadManifestAsync(Uri manifestUri)
+    {
+        using HttpResponseMessage response = await HttpClient.GetAsync(manifestUri, HttpCompletionOption.ResponseHeadersRead);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            throw new HttpRequestException($"Manifest not found at {manifestUri}.", null, response.StatusCode);
+
+        response.EnsureSuccessStatusCode();
+        string json = await response.Content.ReadAsStringAsync();
+        return ParseManifest(json);
+    }
+
+    private static UpdateManifest ParseManifest(string json)
+    {
         UpdateManifest? manifest = JsonSerializer.Deserialize<UpdateManifest>(json, JsonOptions.Default);
         if (manifest == null || string.IsNullOrWhiteSpace(manifest.Version))
             throw new InvalidDataException("Manifest is missing a valid version.");
 
         return manifest;
+    }
+
+    private static async Task DownloadAndExtractPackageAsync(
+        string sourceDirectory,
+        UpdateManifest manifest,
+        string packageDirectoryName,
+        string launchExecutableRelativePath,
+        string localVersionFileName,
+        string stagingRoot,
+        string stagingDirectory)
+    {
+        string archiveName = string.IsNullOrWhiteSpace(manifest.PackageArchive)
+            ? $"{packageDirectoryName.TrimEnd('/', '\\')}.zip"
+            : manifest.PackageArchive.Trim();
+
+        Uri archiveUri = BuildSourceUri(sourceDirectory, archiveName);
+        string archivePath = Path.Combine(stagingRoot, $"package-{Guid.NewGuid():N}.zip");
+        string extractDirectory = Path.Combine(stagingRoot, $"extract-{Guid.NewGuid():N}");
+
+        try
+        {
+            using (HttpResponseMessage response = await HttpClient.GetAsync(archiveUri, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+
+                await using Stream remoteStream = await response.Content.ReadAsStreamAsync();
+                await using FileStream archiveStream = File.Create(archivePath);
+                await remoteStream.CopyToAsync(archiveStream);
+            }
+
+            Directory.CreateDirectory(extractDirectory);
+            ZipFile.ExtractToDirectory(archivePath, extractDirectory);
+
+            string payloadRoot = ResolveExtractedPayloadRoot(extractDirectory, launchExecutableRelativePath, localVersionFileName);
+            CopyDirectory(payloadRoot, stagingDirectory);
+        }
+        finally
+        {
+            if (File.Exists(archivePath))
+            {
+                File.Delete(archivePath);
+            }
+
+            if (Directory.Exists(extractDirectory))
+            {
+                Directory.Delete(extractDirectory, true);
+            }
+        }
+    }
+
+    private static string ResolveExtractedPayloadRoot(string extractDirectory, string launchExecutableRelativePath, string localVersionFileName)
+    {
+        if (LooksLikePayloadRoot(extractDirectory, launchExecutableRelativePath, localVersionFileName))
+            return extractDirectory;
+
+        string[] childDirectories = Directory.GetDirectories(extractDirectory, "*", SearchOption.TopDirectoryOnly);
+        if (childDirectories.Length == 1 && LooksLikePayloadRoot(childDirectories[0], launchExecutableRelativePath, localVersionFileName))
+            return childDirectories[0];
+
+        return extractDirectory;
+    }
+
+    private static bool LooksLikePayloadRoot(string directory, string launchExecutableRelativePath, string localVersionFileName)
+    {
+        if (!string.IsNullOrWhiteSpace(launchExecutableRelativePath) &&
+            File.Exists(Path.Combine(directory, launchExecutableRelativePath.Trim())))
+        {
+            return true;
+        }
+
+        if (File.Exists(Path.Combine(directory, localVersionFileName)))
+            return true;
+
+        return Directory.GetFiles(directory, "*.exe", SearchOption.TopDirectoryOnly)
+            .Any(path => !Path.GetFileName(path).StartsWith("UnityCrashHandler", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? ResolveLaunchPath(string gameDirectory, string configuredRelativePath)
@@ -267,5 +403,33 @@ internal static class LauncherService
         {
             File.SetAttributes(path, attributes | FileAttributes.Hidden);
         }
+    }
+
+    private static bool IsHttpSource(string sourceDirectory)
+    {
+        return Uri.TryCreate(sourceDirectory, UriKind.Absolute, out Uri? uri) &&
+               (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
+    private static Uri BuildSourceUri(string sourceDirectory, string relativeOrAbsolutePath)
+    {
+        if (Uri.TryCreate(relativeOrAbsolutePath, UriKind.Absolute, out Uri? absoluteUri) &&
+            (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps))
+        {
+            return absoluteUri;
+        }
+
+        if (!Uri.TryCreate(sourceDirectory.TrimEnd('/') + "/", UriKind.Absolute, out Uri? baseUri))
+            throw new InvalidOperationException($"Invalid HTTP update source: {sourceDirectory}");
+
+        return new Uri(baseUri, relativeOrAbsolutePath.TrimStart('/'));
+    }
+
+    private static string BuildSourceLocation(string sourceDirectory, string manifestFileName)
+    {
+        if (IsHttpSource(sourceDirectory))
+            return BuildSourceUri(sourceDirectory, manifestFileName).ToString();
+
+        return Path.Combine(sourceDirectory, manifestFileName);
     }
 }

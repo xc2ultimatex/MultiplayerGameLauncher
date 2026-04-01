@@ -7,6 +7,8 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $outputDirectory = Join-Path $projectRoot "dist\\MultiplayerLauncher"
+$rootExePath = Join-Path $projectRoot "MultiplayerLauncher.exe"
+$shortcutPath = Join-Path $projectRoot "MultiplayerLauncher.lnk"
 
 if (Test-Path $outputDirectory) {
     Remove-Item -Recurse -Force $outputDirectory
@@ -34,9 +36,23 @@ if (Test-Path $settingsPath) {
     Remove-Item -Force $settingsPath
 }
 
+$publishedExePath = Join-Path $outputDirectory "MultiplayerLauncher.exe"
+Copy-Item -Force $publishedExePath $rootExePath
+
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut($shortcutPath)
+$shortcut.TargetPath = $rootExePath
+$shortcut.WorkingDirectory = $projectRoot
+$shortcut.IconLocation = "$rootExePath,0"
+$shortcut.Save()
+
 Write-Host ""
 Write-Host "Published launcher to:"
 Write-Host "  $outputDirectory"
 Write-Host ""
 Write-Host "Give users this application:"
-Write-Host "  $(Join-Path $outputDirectory 'MultiplayerLauncher.exe')"
+Write-Host "  $publishedExePath"
+Write-Host ""
+Write-Host "Refreshed local convenience files:"
+Write-Host "  $rootExePath"
+Write-Host "  $shortcutPath"
