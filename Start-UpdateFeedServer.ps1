@@ -34,6 +34,35 @@ if (-not (Test-Path $packageDirectoryPath)) {
     throw "Package directory not found: $packageDirectoryPath"
 }
 
+function Get-LatestPayloadWriteTime {
+    $items = @()
+
+    if (Test-Path $packageDirectoryPath) {
+        $items += Get-Item -LiteralPath $packageDirectoryPath
+        $items += Get-ChildItem -LiteralPath $packageDirectoryPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $latestItem = $items |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
+    if ($latestItem) {
+        return $latestItem.LastWriteTime
+    }
+
+    return [DateTime]::MinValue
+}
+
+function Test-ArchiveRefreshNeeded {
+    if (-not (Test-Path $packageArchivePath -PathType Leaf)) {
+        return $true
+    }
+
+    $archiveWriteTime = (Get-Item -LiteralPath $packageArchivePath).LastWriteTime
+    $payloadWriteTime = Get-LatestPayloadWriteTime
+    return $payloadWriteTime -gt $archiveWriteTime
+}
+
 function Update-PackageArchive {
     if (Test-Path $packageArchivePath) {
         Remove-Item -Force $packageArchivePath
@@ -45,7 +74,7 @@ function Update-PackageArchive {
     Compress-Archive -Path (Join-Path $packageDirectoryPath "*") -DestinationPath $packageArchivePath -Force
 }
 
-if ($RefreshArchive -or -not (Test-Path $packageArchivePath)) {
+if ($RefreshArchive -or (Test-ArchiveRefreshNeeded)) {
     Update-PackageArchive
 }
 
@@ -106,7 +135,7 @@ $pythonProcess = Start-Process -FilePath $python.Source `
     -RedirectStandardError $stderrLogPath
 
 $watcher = New-Object System.IO.FileSystemWatcher
-$watcher.Path = $packageDirectoryPath
+$watcher.Path = $latestPath
 $watcher.IncludeSubdirectories = $true
 $watcher.EnableRaisingEvents = $true
 
@@ -114,8 +143,37 @@ $script:archiveRefreshPending = $false
 $script:archiveRefreshAfter = [DateTime]::MinValue
 
 $queueRefresh = {
-    $script:archiveRefreshPending = $true
-    $script:archiveRefreshAfter = (Get-Date).AddSeconds($QuietSeconds)
+    $eventArgs = $Event.SourceEventArgs
+    $changedPaths = @()
+
+    if ($eventArgs -and $eventArgs.PSObject.Properties.Name -contains "FullPath") {
+        $changedPaths += $eventArgs.FullPath
+    }
+
+    if ($eventArgs -and $eventArgs.PSObject.Properties.Name -contains "OldFullPath") {
+        $changedPaths += $eventArgs.OldFullPath
+    }
+
+    $payloadPrefix = $packageDirectoryPath.TrimEnd('\') + '\'
+    $matchesPayload = $false
+
+    foreach ($changedPath in $changedPaths) {
+        if ([string]::IsNullOrWhiteSpace($changedPath)) {
+            continue
+        }
+
+        $normalizedPath = [System.IO.Path]::GetFullPath($changedPath)
+        if ($normalizedPath.StartsWith($payloadPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+            [System.StringComparer]::OrdinalIgnoreCase.Equals($normalizedPath.TrimEnd('\'), $packageDirectoryPath.TrimEnd('\'))) {
+            $matchesPayload = $true
+            break
+        }
+    }
+
+    if ($matchesPayload) {
+        $script:archiveRefreshPending = $true
+        $script:archiveRefreshAfter = (Get-Date).AddSeconds($QuietSeconds)
+    }
 }
 
 $createdEvent = Register-ObjectEvent -InputObject $watcher -EventName Created -Action $queueRefresh

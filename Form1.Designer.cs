@@ -6,6 +6,7 @@ partial class Form1
     private Label titleLabel = null!;
     private Label subtitleLabel = null!;
     private Label statusValueLabel = null!;
+    private Label detailsValueLabel = null!;
     private Button retryButton = null!;
     private Button launchInstalledButton = null!;
     private Button closeButton = null!;
@@ -25,6 +26,7 @@ partial class Form1
         titleLabel = new Label();
         subtitleLabel = new Label();
         statusValueLabel = new Label();
+        detailsValueLabel = new Label();
         retryButton = new Button();
         launchInstalledButton = new Button();
         closeButton = new Button();
@@ -60,32 +62,43 @@ partial class Form1
         statusValueLabel.TabIndex = 2;
         statusValueLabel.Text = "Starting...";
         //
+        // detailsValueLabel
+        //
+        detailsValueLabel.BorderStyle = BorderStyle.FixedSingle;
+        detailsValueLabel.Font = new Font("Consolas", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        detailsValueLabel.Location = new Point(28, 186);
+        detailsValueLabel.Name = "detailsValueLabel";
+        detailsValueLabel.Padding = new Padding(10);
+        detailsValueLabel.Size = new Size(428, 124);
+        detailsValueLabel.TabIndex = 3;
+        detailsValueLabel.Text = "Source: \r\nGame: \r\nLocal: \r\nRemote: ";
+        //
         // retryButton
         //
-        retryButton.Location = new Point(28, 198);
+        retryButton.Location = new Point(28, 326);
         retryButton.Name = "retryButton";
         retryButton.Size = new Size(100, 34);
-        retryButton.TabIndex = 3;
+        retryButton.TabIndex = 4;
         retryButton.Text = "Retry";
         retryButton.UseVisualStyleBackColor = true;
         retryButton.Click += retryButton_Click;
         //
         // launchInstalledButton
         //
-        launchInstalledButton.Location = new Point(240, 198);
+        launchInstalledButton.Location = new Point(240, 326);
         launchInstalledButton.Name = "launchInstalledButton";
         launchInstalledButton.Size = new Size(110, 34);
-        launchInstalledButton.TabIndex = 4;
+        launchInstalledButton.TabIndex = 5;
         launchInstalledButton.Text = "Launch Game";
         launchInstalledButton.UseVisualStyleBackColor = true;
         launchInstalledButton.Click += launchInstalledButton_Click;
         //
         // closeButton
         //
-        closeButton.Location = new Point(356, 198);
+        closeButton.Location = new Point(356, 326);
         closeButton.Name = "closeButton";
         closeButton.Size = new Size(100, 34);
-        closeButton.TabIndex = 5;
+        closeButton.TabIndex = 6;
         closeButton.Text = "Close";
         closeButton.UseVisualStyleBackColor = true;
         closeButton.Click += closeButton_Click;
@@ -95,10 +108,11 @@ partial class Form1
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         BackColor = Color.WhiteSmoke;
-        ClientSize = new Size(484, 261);
+        ClientSize = new Size(484, 380);
         Controls.Add(closeButton);
         Controls.Add(launchInstalledButton);
         Controls.Add(retryButton);
+        Controls.Add(detailsValueLabel);
         Controls.Add(statusValueLabel);
         Controls.Add(subtitleLabel);
         Controls.Add(titleLabel);

@@ -89,11 +89,13 @@ public partial class Form1 : Form
         {
             LauncherStatus launcherStatus = await LauncherService.CheckForUpdatesAsync(launcherRoot, settings);
             UpdateStatusView(launcherStatus);
+            UpdateDetailsView(launcherStatus);
             return launcherStatus;
         }
         catch (Exception ex)
         {
             SetStatus($"Update check failed: {ex.Message}", isError: true);
+            UpdateDetailsView(null);
             return null;
         }
         finally
@@ -163,6 +165,45 @@ public partial class Form1 : Form
         }
 
         SetStatus("No installed build was found.", isError: true);
+    }
+
+    private void UpdateDetailsView(LauncherStatus? launcherStatus)
+    {
+        if (launcherStatus is null)
+        {
+            detailsValueLabel.Text = BuildDetailsText(
+                sourceDirectory: settings.UpdateSourceDirectory,
+                localGameDirectory: Path.Combine(launcherRoot, settings.GameDirectoryName),
+                localVersion: null,
+                remoteVersion: null);
+            return;
+        }
+
+        detailsValueLabel.Text = BuildDetailsText(
+            launcherStatus.SourceDirectory,
+            launcherStatus.LocalGameDirectory,
+            launcherStatus.LocalVersion,
+            launcherStatus.RemoteVersion);
+    }
+
+    private static string BuildDetailsText(
+        string sourceDirectory,
+        string localGameDirectory,
+        string? localVersion,
+        string? remoteVersion)
+    {
+        return string.Join(Environment.NewLine, new[]
+        {
+            $"Source: {DisplayValue(sourceDirectory)}",
+            $"Game:   {DisplayValue(localGameDirectory)}",
+            $"Local:  {DisplayValue(localVersion)}",
+            $"Remote: {DisplayValue(remoteVersion)}"
+        });
+    }
+
+    private static string DisplayValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "(none)" : value.Trim();
     }
 
     private void SetStatus(string message, bool isError)

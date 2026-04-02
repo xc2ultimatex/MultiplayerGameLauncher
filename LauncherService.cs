@@ -24,6 +24,7 @@ internal static class LauncherService
             {
                 IsConfigured = false,
                 SourceDirectory = sourceDirectory,
+                LocalGameDirectory = localGameDirectory,
                 LocalVersion = await ReadVersionIfPresentAsync(localVersionPath),
                 CanLaunch = defaultLaunchPath is not null,
                 LaunchPath = defaultLaunchPath
@@ -38,6 +39,7 @@ internal static class LauncherService
                 IsConfigured = true,
                 RemoteManifestAvailable = false,
                 SourceDirectory = sourceDirectory,
+                LocalGameDirectory = localGameDirectory,
                 LocalVersion = await ReadVersionIfPresentAsync(localVersionPath),
                 CanLaunch = defaultLaunchPath is not null,
                 LaunchPath = defaultLaunchPath
@@ -61,6 +63,7 @@ internal static class LauncherService
             CanLaunch = hasInstalledBuild,
             CanUpdateOrInstall = true,
             SourceDirectory = sourceDirectory,
+            LocalGameDirectory = localGameDirectory,
             LocalVersion = string.IsNullOrWhiteSpace(localVersion) ? null : localVersion,
             RemoteVersion = remoteVersion,
             LaunchPath = hasInstalledBuild ? launchPath : null

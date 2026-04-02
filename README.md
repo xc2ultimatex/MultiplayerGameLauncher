@@ -110,4 +110,16 @@ The script:
 - builds the launcher automatically when `MultiplayerLauncher.exe` is missing
 - starts the built launcher
 
-You can automate step 1 and step 2 with [Publish-LatestBuild.ps1](c:/Users/Corey/Documents/MultiplayerPrototype/BuildTools/Publish-LatestBuild.ps1).
+You can automate step 1 and step 2 with [Publish-LatestBuild.ps1](/c:/MultiplayerLauncher/Publish-LatestBuild.ps1).
+
+Typical usage from the repo root:
+
+```powershell
+.\Publish-LatestBuild.ps1 -SourceBuildDirectory "C:\UnityBuilds\Windows"
+```
+
+If your Unity build target is already `C:\MultiplayerPrototypeBuilds\Latest\payload`, point the script at that directory. In that mode it does not recopy the payload; it only refreshes `version.txt` and `manifest.json`.
+
+```powershell
+.\Publish-LatestBuild.ps1 -SourceBuildDirectory "C:\MultiplayerPrototypeBuilds\Latest\payload"
+```
