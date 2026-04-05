@@ -5,7 +5,7 @@ namespace MultiplayerLauncher;
 public sealed class LauncherSettings
 {
     [JsonPropertyName("updateSourceDirectory")]
-    public string UpdateSourceDirectory { get; init; } = "http://74.128.161.157:8080/Latest";
+    public string UpdateSourceDirectory { get; init; } = "http://74.128.161.112:8080/Latest";
 
     [JsonPropertyName("manifestFileName")]
     public string ManifestFileName { get; init; } = "manifest.json";

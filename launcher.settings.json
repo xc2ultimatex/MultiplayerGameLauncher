@@ -1,5 +1,5 @@
 {
-  "updateSourceDirectory": "http://74.128.161.157:8080/Latest",
+  "updateSourceDirectory": "http://74.128.161.112:8080/Latest",
   "manifestFileName": "manifest.json",
   "packageDirectoryName": "payload",
   "gameDirectoryName": "Game",

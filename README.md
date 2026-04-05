@@ -14,7 +14,7 @@ For this project the current default feed is:
 
 ```json
 {
-  "updateSourceDirectory": "http://74.128.161.157:8080/Latest",
+  "updateSourceDirectory": "http://74.128.161.112:8080/Latest",
   "manifestFileName": "manifest.json",
   "packageDirectoryName": "payload",
   "gameDirectoryName": "Game",
@@ -23,7 +23,7 @@ For this project the current default feed is:
 }
 ```
 
-Clients on other machines should use either a reachable UNC share path or a reachable `http://` / `https://` URL. The current hardcoded internet feed is `http://74.128.161.157:8080/Latest`.
+Clients on other machines should use either a reachable UNC share path or a reachable `http://` / `https://` URL. The current hardcoded internet feed is `http://74.128.161.112:8080/Latest`.
 Leave `gameExecutableRelativePath` blank to auto-detect the single non-crash-handler `.exe` in the local `Game` folder, or set it explicitly if your payload contains multiple launchable executables.
 
 ## Dev host directory layout
