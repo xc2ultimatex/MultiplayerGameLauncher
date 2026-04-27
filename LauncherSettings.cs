@@ -4,8 +4,11 @@ namespace MultiplayerLauncher;
 
 public sealed class LauncherSettings
 {
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = "Game";
+
     [JsonPropertyName("updateSourceDirectory")]
-    public string UpdateSourceDirectory { get; init; } = "http://74.128.161.112:8080/Latest";
+    public string UpdateSourceDirectory { get; init; } = "";
 
     [JsonPropertyName("manifestFileName")]
     public string ManifestFileName { get; init; } = "manifest.json";
@@ -22,5 +25,6 @@ public sealed class LauncherSettings
     [JsonPropertyName("localVersionFileName")]
     public string LocalVersionFileName { get; init; } = "version.txt";
 
-    public static LauncherSettings Default { get; } = new();
+    [JsonPropertyName("patchNotes")]
+    public string PatchNotes { get; init; } = "- No patch notes available yet.";
 }

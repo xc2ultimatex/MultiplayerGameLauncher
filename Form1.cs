@@ -4,270 +4,320 @@ namespace MultiplayerLauncher;
 
 public partial class Form1 : Form
 {
-    private readonly string launcherRoot;
-    private readonly string settingsPath;
-    private LauncherSettings settings = LauncherSettings.Default;
-    private bool isBusy;
-    private bool startupProcessed;
+    private readonly string _launcherRoot;
+    private readonly string _configPath;
+    private LauncherConfig _config = LauncherConfig.Default;
+    private readonly List<GameEntry> _games = new();
+    private GameEntry? _selected;
+
+    // ── Colors ─────────────────────────────────────────────────────────────────
+    private static readonly Color BgDark      = Color.FromArgb(18,  18,  28);
+    private static readonly Color BgSidebar   = Color.FromArgb(24,  24,  38);
+    private static readonly Color BgSelected  = Color.FromArgb(42,  42,  66);
+    private static readonly Color BgRight     = Color.FromArgb(22,  22,  34);
+    private static readonly Color TextPrimary = Color.FromArgb(230, 225, 240);
+    private static readonly Color TextMuted   = Color.FromArgb(140, 135, 160);
+    private static readonly Color ColGreen    = Color.FromArgb(80,  200, 110);
+    private static readonly Color ColYellow   = Color.FromArgb(210, 170,  55);
+    private static readonly Color ColRed      = Color.FromArgb(210,  75,  75);
+    private static readonly Color ColGray     = Color.FromArgb(120, 115, 140);
+    private static readonly Color ColLaunch   = Color.FromArgb(55,  145,  70);
+
+    // ── Per-game state ─────────────────────────────────────────────────────────
+    private sealed class GameEntry
+    {
+        public required LauncherSettings Settings;
+        public LauncherStatus?           Status;
+        public bool                      IsBusy;
+        public string                    StatusText  = "Checking...";
+        public Color                     StatusColor = Color.FromArgb(120, 115, 140);
+
+        // Sidebar list item controls
+        public Panel  ListItem   = null!;
+        public Label  NameLabel  = null!;
+        public Label  StatusLabel = null!;
+        public Label  VersionLabel = null!;
+    }
 
     public Form1()
     {
-        launcherRoot = AppContext.BaseDirectory;
-        settingsPath = Path.Combine(launcherRoot, "launcher.settings.json");
-
+        _launcherRoot = AppContext.BaseDirectory;
+        _configPath   = Path.Combine(_launcherRoot, "launcher.settings.json");
         InitializeComponent();
-        Shown += async (_, _) => await LoadSettingsAndRefreshAsync();
+        Shown += async (_, _) => await StartupAsync();
     }
 
-    private async Task LoadSettingsAndRefreshAsync()
+    // ── Startup ────────────────────────────────────────────────────────────────
+
+    private async Task StartupAsync()
+    {
+        await LoadConfigAsync();
+        BuildGameListUI();
+
+        if (_games.Count > 0)
+            SelectGame(_games[0]);
+
+        // Check + auto-update all games in parallel — no auto-launch
+        await Task.WhenAll(_games.Select(AutoUpdateGameAsync));
+    }
+
+    private async Task LoadConfigAsync()
     {
         try
         {
-            await EnsureSettingsFileExistsAsync();
-            settings = await LoadSettingsAsync();
-            LauncherStatus? launcherStatus = await RefreshStatusAsync();
-
-            if (startupProcessed || launcherStatus is null)
-                return;
-
-            startupProcessed = true;
-
-            if (launcherStatus is { IsConfigured: true, RemoteManifestAvailable: true, UpdateAvailable: true, CanUpdateOrInstall: true })
+            if (!File.Exists(_configPath))
             {
-                await AutoUpdateAsync();
-                return;
+                string json = JsonSerializer.Serialize(LauncherConfig.Default, JsonOptions.WriteIndented);
+                await File.WriteAllTextAsync(_configPath, json);
+                HideFile(_configPath);
             }
 
-            if (launcherStatus is { IsConfigured: true, RemoteManifestAvailable: true, UpdateAvailable: false, CanLaunch: true } &&
-                !string.IsNullOrWhiteSpace(launcherStatus.LaunchPath))
+            string text = await File.ReadAllTextAsync(_configPath);
+            LauncherConfig? cfg = JsonSerializer.Deserialize<LauncherConfig>(text, JsonOptions.Default);
+            if (cfg?.Games is { Count: > 0 })
             {
-                LauncherService.LaunchGame(launcherStatus.LaunchPath, launcherRoot);
-                Close();
-                return;
+                _config = cfg;
+            }
+            else
+            {
+                // Migrate old single-game format
+                LauncherSettings? legacy = JsonSerializer.Deserialize<LauncherSettings>(text, JsonOptions.Default);
+                if (legacy != null)
+                    _config = new LauncherConfig { Games = new List<LauncherSettings> { legacy } };
             }
 
-            if (launcherStatus is { CanLaunch: true, LaunchPath: not null })
+            HideFile(_configPath);
+        }
+        catch { /* use default config */ }
+    }
+
+    // ── Sidebar list ───────────────────────────────────────────────────────────
+
+    private void BuildGameListUI()
+    {
+        gameListPanel.Controls.Clear();
+        _games.Clear();
+
+        int y = 0;
+        foreach (LauncherSettings settings in _config.Games)
+        {
+            var entry = new GameEntry { Settings = settings };
+            BuildListItem(entry, y);
+            _games.Add(entry);
+            gameListPanel.Controls.Add(entry.ListItem);
+            y += entry.ListItem.Height;
+        }
+    }
+
+    private void BuildListItem(GameEntry entry, int top)
+    {
+        var item = new Panel
+        {
+            Location  = new Point(0, top),
+            Size      = new Size(gameListPanel.Width, 78),
+            BackColor = BgSidebar,
+            Cursor    = Cursors.Hand
+        };
+
+        var name = new Label
+        {
+            Text      = entry.Settings.Name,
+            Font      = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
+            ForeColor = TextPrimary,
+            Location  = new Point(16, 14),
+            Size      = new Size(item.Width - 20, 22),
+            AutoEllipsis = true
+        };
+
+        var status = new Label
+        {
+            Text      = "Checking...",
+            Font      = new Font("Segoe UI", 8.5f),
+            ForeColor = ColGray,
+            Location  = new Point(16, 38),
+            Size      = new Size(item.Width - 20, 18)
+        };
+
+        var version = new Label
+        {
+            Text      = "",
+            Font      = new Font("Consolas", 8f),
+            ForeColor = TextMuted,
+            Location  = new Point(16, 56),
+            Size      = new Size(item.Width - 20, 16)
+        };
+
+        item.Controls.AddRange(new Control[] { name, status, version });
+
+        // Make all children pass clicks through to the item
+        foreach (Control c in item.Controls)
+            c.Click += (_, _) => SelectGame(entry);
+
+        item.Click += (_, _) => SelectGame(entry);
+
+        entry.ListItem    = item;
+        entry.NameLabel   = name;
+        entry.StatusLabel = status;
+        entry.VersionLabel = version;
+    }
+
+    // ── Game selection ─────────────────────────────────────────────────────────
+
+    private void SelectGame(GameEntry entry)
+    {
+        _selected = entry;
+
+        // Highlight selected item
+        foreach (var g in _games)
+            g.ListItem.BackColor = g == entry ? BgSelected : BgSidebar;
+
+        RefreshRightPanel();
+    }
+
+    private void RefreshRightPanel()
+    {
+        if (_selected == null) return;
+
+        rightTitleLabel.Text = _selected.Settings.Name;
+
+        if (_selected.IsBusy)
+        {
+            rightStatusLabel.Text      = _selected.StatusText;
+            rightStatusLabel.ForeColor = ColYellow;
+            launchButton.Enabled       = false;
+            launchButton.Text          = "Launch Game";
+        }
+        else if (_selected.Status == null)
+        {
+            rightStatusLabel.Text      = "Checking for updates...";
+            rightStatusLabel.ForeColor = ColGray;
+            launchButton.Enabled       = false;
+        }
+        else if (!_selected.Status.IsConfigured)
+        {
+            rightStatusLabel.Text      = "Not configured.";
+            rightStatusLabel.ForeColor = ColRed;
+            launchButton.Enabled       = false;
+        }
+        else if (!_selected.Status.CanLaunch)
+        {
+            rightStatusLabel.Text      = "Not installed.";
+            rightStatusLabel.ForeColor = ColRed;
+            launchButton.Enabled       = false;
+        }
+        else if (_selected.Status.UpdateAvailable)
+        {
+            rightStatusLabel.Text      = $"Update available  ({_selected.Status.LocalVersion} -> {_selected.Status.RemoteVersion})";
+            rightStatusLabel.ForeColor = ColYellow;
+            launchButton.Enabled       = true;
+            launchButton.Text          = "Launch Game";
+        }
+        else
+        {
+            rightStatusLabel.Text      = $"Up to date  ({_selected.Status.LocalVersion})";
+            rightStatusLabel.ForeColor = ColGreen;
+            launchButton.Enabled       = true;
+            launchButton.Text          = "Launch Game";
+        }
+
+        // Patch notes: prefer manifest notes, fall back to settings placeholder
+        string notes = _selected.Status?.PatchNotes
+            ?? _selected.Settings.PatchNotes
+            ?? "- No patch notes available.";
+        patchNotesBox.Text = notes;
+    }
+
+    // ── Auto-update ────────────────────────────────────────────────────────────
+
+    private async Task AutoUpdateGameAsync(GameEntry entry)
+    {
+        SetBusy(entry, "Checking for updates...");
+
+        try
+        {
+            LauncherStatus status = await LauncherService.CheckForUpdatesAsync(_launcherRoot, entry.Settings);
+            entry.Status = status;
+
+            if (status is { IsConfigured: true, RemoteManifestAvailable: true, UpdateAvailable: true, CanUpdateOrInstall: true })
             {
-                LauncherService.LaunchGame(launcherStatus.LaunchPath, launcherRoot);
-                Close();
+                SetBusy(entry, status.CanLaunch ? "Updating..." : "Installing...");
+                await LauncherService.UpdateAsync(_launcherRoot, entry.Settings, launch: false);
+
+                // Re-check so we have fresh version info
+                entry.Status = await LauncherService.CheckForUpdatesAsync(_launcherRoot, entry.Settings);
             }
         }
         catch (Exception ex)
         {
-            SetStatus($"Failed to load launcher settings: {ex.Message}", isError: true);
-        }
-    }
-
-    private async Task EnsureSettingsFileExistsAsync()
-    {
-        if (File.Exists(settingsPath))
-        {
-            HideFileIfPresent(settingsPath);
-            return;
-        }
-
-        string json = JsonSerializer.Serialize(LauncherSettings.Default, JsonOptions.WriteIndented);
-        await File.WriteAllTextAsync(settingsPath, json);
-        HideFileIfPresent(settingsPath);
-    }
-
-    private async Task<LauncherSettings> LoadSettingsAsync()
-    {
-        string json = await File.ReadAllTextAsync(settingsPath);
-        LauncherSettings? loadedSettings = JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions.Default);
-        return loadedSettings ?? LauncherSettings.Default;
-    }
-
-    private async Task<LauncherStatus?> RefreshStatusAsync()
-    {
-        if (isBusy)
-            return null;
-
-        SetBusy(true, "Checking for updates...");
-
-        try
-        {
-            LauncherStatus launcherStatus = await LauncherService.CheckForUpdatesAsync(launcherRoot, settings);
-            UpdateStatusView(launcherStatus);
-            UpdateDetailsView(launcherStatus);
-            return launcherStatus;
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Update check failed: {ex.Message}", isError: true);
-            UpdateDetailsView(null);
-            return null;
+            entry.StatusText  = $"Error: {ex.Message}";
+            entry.StatusColor = ColRed;
         }
         finally
         {
-            SetBusy(false);
+            entry.IsBusy = false;
+            UpdateListItem(entry);
+            if (_selected == entry)
+                RefreshRightPanel();
         }
     }
 
-    private async Task AutoUpdateAsync()
+    private void SetBusy(GameEntry entry, string text)
     {
-        if (isBusy)
-            return;
+        entry.IsBusy       = true;
+        entry.StatusText   = text;
+        entry.StatusColor  = ColYellow;
+        UpdateListItem(entry);
+        if (_selected == entry)
+            RefreshRightPanel();
+    }
 
-        SetBusy(true, "Outdated build detected. Updating automatically...");
+    private void UpdateListItem(GameEntry entry)
+    {
+        if (entry.IsBusy)
+        {
+            entry.StatusLabel.Text      = entry.StatusText;
+            entry.StatusLabel.ForeColor = entry.StatusColor;
+            entry.VersionLabel.Text     = "";
+            return;
+        }
+
+        var s = entry.Status;
+        if (s == null)                   { entry.StatusLabel.Text = "Unknown";      entry.StatusLabel.ForeColor = ColGray;   }
+        else if (!s.IsConfigured)        { entry.StatusLabel.Text = "Not configured"; entry.StatusLabel.ForeColor = ColRed;  }
+        else if (!s.CanLaunch)           { entry.StatusLabel.Text = "Not installed"; entry.StatusLabel.ForeColor = ColRed;   }
+        else if (s.UpdateAvailable)      { entry.StatusLabel.Text = "Update available"; entry.StatusLabel.ForeColor = ColYellow; }
+        else                             { entry.StatusLabel.Text = "Up to date";    entry.StatusLabel.ForeColor = ColGreen; }
+
+        entry.VersionLabel.Text = s?.LocalVersion != null ? $"v{s.LocalVersion}" : "";
+    }
+
+    // ── Launch ─────────────────────────────────────────────────────────────────
+
+    private void launchButton_Click(object sender, EventArgs e)
+    {
+        if (_selected?.Status?.LaunchPath == null) return;
 
         try
         {
-            UpdateResult result = await LauncherService.UpdateAsync(launcherRoot, settings);
-            SetStatus(result.Message, isError: false);
-
-            if (result.Launched)
-            {
-                Close();
-            }
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Automatic update failed: {ex.Message}", isError: true);
-        }
-        finally
-        {
-            SetBusy(false);
-        }
-    }
-
-    private void UpdateStatusView(LauncherStatus launcherStatus)
-    {
-        retryButton.Enabled = true;
-        launchInstalledButton.Enabled = launcherStatus.CanLaunch;
-
-        if (!launcherStatus.IsConfigured)
-        {
-            SetStatus("Launcher configuration is missing or invalid.", isError: true);
-            return;
-        }
-
-        if (!launcherStatus.RemoteManifestAvailable)
-        {
-            SetStatus(
-                launcherStatus.CanLaunch
-                    ? "Update feed unavailable. Launching installed build."
-                    : $"Could not reach the update feed at {launcherStatus.SourceDirectory}.",
-                isError: !launcherStatus.CanLaunch);
-            return;
-        }
-
-        if (launcherStatus.UpdateAvailable)
-        {
-            SetStatus("Updating to the latest build...", isError: false);
-            return;
-        }
-
-        if (launcherStatus.CanLaunch)
-        {
-            SetStatus("Build is current. Launching game...", isError: false);
-            return;
-        }
-
-        SetStatus("No installed build was found.", isError: true);
-    }
-
-    private void UpdateDetailsView(LauncherStatus? launcherStatus)
-    {
-        if (launcherStatus is null)
-        {
-            detailsValueLabel.Text = BuildDetailsText(
-                sourceDirectory: settings.UpdateSourceDirectory,
-                localGameDirectory: Path.Combine(launcherRoot, settings.GameDirectoryName),
-                localVersion: null,
-                remoteVersion: null);
-            return;
-        }
-
-        detailsValueLabel.Text = BuildDetailsText(
-            launcherStatus.SourceDirectory,
-            launcherStatus.LocalGameDirectory,
-            launcherStatus.LocalVersion,
-            launcherStatus.RemoteVersion);
-    }
-
-    private static string BuildDetailsText(
-        string sourceDirectory,
-        string localGameDirectory,
-        string? localVersion,
-        string? remoteVersion)
-    {
-        return string.Join(Environment.NewLine, new[]
-        {
-            $"Source: {DisplayValue(sourceDirectory)}",
-            $"Game:   {DisplayValue(localGameDirectory)}",
-            $"Local:  {DisplayValue(localVersion)}",
-            $"Remote: {DisplayValue(remoteVersion)}"
-        });
-    }
-
-    private static string DisplayValue(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? "(none)" : value.Trim();
-    }
-
-    private void SetStatus(string message, bool isError)
-    {
-        statusValueLabel.Text = message;
-        statusValueLabel.ForeColor = isError ? Color.FromArgb(190, 58, 58) : Color.FromArgb(30, 78, 30);
-    }
-
-    private void SetBusy(bool busy, string? message = null)
-    {
-        isBusy = busy;
-        retryButton.Enabled = !busy;
-        launchInstalledButton.Enabled = !busy;
-
-        if (!string.IsNullOrWhiteSpace(message))
-        {
-            statusValueLabel.Text = message;
-            statusValueLabel.ForeColor = Color.FromArgb(30, 30, 30);
-        }
-    }
-
-    private async void retryButton_Click(object sender, EventArgs e)
-    {
-        startupProcessed = false;
-        await LoadSettingsAndRefreshAsync();
-    }
-
-    private async void launchInstalledButton_Click(object sender, EventArgs e)
-    {
-        if (isBusy)
-            return;
-
-        try
-        {
-            LauncherStatus launcherStatus = await LauncherService.CheckForUpdatesAsync(launcherRoot, settings);
-            if (!launcherStatus.CanLaunch || string.IsNullOrWhiteSpace(launcherStatus.LaunchPath))
-            {
-                SetStatus("No installed build is available to launch.", isError: true);
-                return;
-            }
-
-            LauncherService.LaunchGame(launcherStatus.LaunchPath, launcherRoot);
+            LauncherService.LaunchGame(_selected.Status.LaunchPath, _launcherRoot);
             Close();
         }
         catch (Exception ex)
         {
-            SetStatus($"Launch failed: {ex.Message}", isError: true);
+            MessageBox.Show($"Failed to launch:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
-    private void closeButton_Click(object sender, EventArgs e)
-    {
-        Close();
-    }
+    private void closeButton_Click(object sender, EventArgs e) => Close();
 
-    private static void HideFileIfPresent(string path)
-    {
-        if (!File.Exists(path))
-            return;
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
-        FileAttributes attributes = File.GetAttributes(path);
-        if ((attributes & FileAttributes.Hidden) == 0)
-        {
-            File.SetAttributes(path, attributes | FileAttributes.Hidden);
-        }
+    private static void HideFile(string path)
+    {
+        if (!File.Exists(path)) return;
+        var attrs = File.GetAttributes(path);
+        if ((attrs & FileAttributes.Hidden) == 0)
+            File.SetAttributes(path, attrs | FileAttributes.Hidden);
     }
 }

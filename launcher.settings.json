@@ -1,8 +1,24 @@
 {
-  "updateSourceDirectory": "http://74.128.161.112:8080/Latest",
-  "manifestFileName": "manifest.json",
-  "packageDirectoryName": "payload",
-  "gameDirectoryName": "Game",
-  "gameExecutableRelativePath": "",
-  "localVersionFileName": "version.txt"
+  "games": [
+    {
+      "name": "Shop Game",
+      "updateSourceDirectory": "http://74.128.161.112:8080/Latest",
+      "manifestFileName": "manifest.json",
+      "packageDirectoryName": "payload",
+      "gameDirectoryName": "ShopGame",
+      "gameExecutableRelativePath": "",
+      "localVersionFileName": "version.txt",
+      "patchNotes": "- Initial release\n- Multiplayer support\n- More updates coming soon!"
+    },
+    {
+      "name": "Camgirl Management Simulator",
+      "updateSourceDirectory": "http://74.128.161.112:8080/CamgirlSim",
+      "manifestFileName": "manifest.json",
+      "packageDirectoryName": "payload",
+      "gameDirectoryName": "CamgirlSim",
+      "gameExecutableRelativePath": "",
+      "localVersionFileName": "version.txt",
+      "patchNotes": "- Initial release\n- Hire and manage girls\n- Assign tasks: Stream, Stock, Clean, Advertise\n- More features coming soon!"
+    }
+  ]
 }

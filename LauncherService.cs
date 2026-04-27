@@ -66,11 +66,12 @@ internal static class LauncherService
             LocalGameDirectory = localGameDirectory,
             LocalVersion = string.IsNullOrWhiteSpace(localVersion) ? null : localVersion,
             RemoteVersion = remoteVersion,
-            LaunchPath = hasInstalledBuild ? launchPath : null
+            LaunchPath = hasInstalledBuild ? launchPath : null,
+            PatchNotes = string.IsNullOrWhiteSpace(manifest.PatchNotes) ? null : manifest.PatchNotes.Trim()
         };
     }
 
-    public static async Task<UpdateResult> UpdateAsync(string launcherRoot, LauncherSettings settings)
+    public static async Task<UpdateResult> UpdateAsync(string launcherRoot, LauncherSettings settings, bool launch = true)
     {
         LauncherStatus status = await CheckForUpdatesAsync(launcherRoot, settings);
         if (!status.IsConfigured)
@@ -169,15 +170,16 @@ internal static class LauncherService
         if (!File.Exists(finalLaunchPath))
             throw new FileNotFoundException("The installed game executable could not be found after update.", finalLaunchPath);
 
-        LaunchGame(finalLaunchPath, launcherRoot);
+        if (launch)
+            LaunchGame(finalLaunchPath, launcherRoot);
 
         return new UpdateResult
         {
-            Updated = updateRequired,
-            Launched = true,
-            Message = updateRequired
-                ? $"Updated to {manifest.Version.Trim()} and launched the game."
-                : "Installed build is already current. Launched the game."
+            Updated  = updateRequired,
+            Launched = launch,
+            Message  = updateRequired
+                ? $"Updated to {manifest.Version.Trim()}."
+                : "Already up to date."
         };
     }
 

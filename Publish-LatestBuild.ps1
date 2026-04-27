@@ -1,12 +1,35 @@
 param(
-    [string]$SourceBuildDirectory = "C:\UnityBuilds",
+    # Shortcut: pass a game name to auto-resolve source and destination.
+    # Known names: "ShopGame", "CamgirlSim"
+    # You can add more entries to $GameFeedMap below.
+    [string]$GameName = "",
+
+    [string]$SourceBuildDirectory = "",
     [string]$Version = "",
-    [string]$DestinationRoot = "C:\MultiplayerPrototypeBuilds\Latest",
+    [string]$DestinationRoot = "",
     [string]$LaunchExecutable = "",
     [string]$PayloadDirectoryName = "payload",
     [string]$VersionFileName = "version.txt",
     [string]$PackageArchiveName = ""
 )
+
+# ── Game-name shortcuts ─────────────────────────────────────────────────────
+$GameFeedMap = @{
+    "ShopGame"   = @{ Source = "C:\UnityBuilds\ShopGame";   Dest = "C:\MultiplayerPrototypeBuilds\Latest" }
+    "CamgirlSim" = @{ Source = "C:\UnityBuilds\CamgirlSim"; Dest = "C:\MultiplayerPrototypeBuilds\CamgirlSim" }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($GameName)) {
+    if (-not $GameFeedMap.ContainsKey($GameName)) {
+        throw "Unknown game name '$GameName'. Known names: $($GameFeedMap.Keys -join ', ')"
+    }
+    if ([string]::IsNullOrWhiteSpace($SourceBuildDirectory)) { $SourceBuildDirectory = $GameFeedMap[$GameName].Source }
+    if ([string]::IsNullOrWhiteSpace($DestinationRoot))      { $DestinationRoot      = $GameFeedMap[$GameName].Dest  }
+} else {
+    # Legacy defaults (ShopGame)
+    if ([string]::IsNullOrWhiteSpace($SourceBuildDirectory)) { $SourceBuildDirectory = "C:\UnityBuilds\ShopGame" }
+    if ([string]::IsNullOrWhiteSpace($DestinationRoot))      { $DestinationRoot      = "C:\MultiplayerPrototypeBuilds\Latest" }
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -143,6 +166,13 @@ if ($resolvedPayloadDirectory.Length -le 3) {
 
 New-Item -ItemType Directory -Path $resolvedDestinationRoot -Force | Out-Null
 
+Write-Host "Game:      $GameName"
+Write-Host "Source:    $resolvedSourceBuildDirectory"
+Write-Host "Feed:      $resolvedDestinationRoot"
+Write-Host "Version:   $resolvedVersion"
+Write-Host "Exe:       $resolvedLaunchExecutable"
+Write-Host ""
+
 if (-not $sourceIsPayloadDirectory) {
     $stagingRoot = Join-Path $resolvedDestinationRoot ".publish-temp"
     $stagingDirectory = Join-Path $stagingRoot ("payload-" + [Guid]::NewGuid().ToString("N"))
@@ -151,7 +181,9 @@ if (-not $sourceIsPayloadDirectory) {
     New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 
     try {
+        Write-Host "Copying build files to staging..."
         Copy-DirectoryContents -SourceDirectory $resolvedSourceBuildDirectory -DestinationDirectory $stagingDirectory
+        Write-Host "Copy complete."
 
         $swappedDirectory = $false
         try {
@@ -202,22 +234,26 @@ elseif (-not (Test-Path -LiteralPath $resolvedPayloadDirectory -PathType Contain
     throw "Payload directory does not exist: $resolvedPayloadDirectory"
 }
 
+Write-Host "Writing version file..."
 Set-Content -LiteralPath $versionFilePath -Value $resolvedVersion
 
 $manifest = [ordered]@{
-    version = $resolvedVersion
+    version          = $resolvedVersion
     packageDirectory = $PayloadDirectoryName
-    packageArchive = $resolvedPackageArchiveName
+    packageArchive   = $resolvedPackageArchiveName
     launchExecutable = $resolvedLaunchExecutable
 }
 
+Write-Host "Writing manifest..."
 $manifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath
 
+Write-Host "Zipping payload (this may take a moment)..."
 if (Test-Path -LiteralPath $packageArchivePath) {
     Remove-Item -LiteralPath $packageArchivePath -Force
 }
 
 Compress-Archive -Path (Join-Path $resolvedPayloadDirectory "*") -DestinationPath $packageArchivePath -Force
+Write-Host "Zip complete."
 
 Write-Host "Published build version $resolvedVersion to $resolvedDestinationRoot"
 Write-Host "Source build: $resolvedSourceBuildDirectory"

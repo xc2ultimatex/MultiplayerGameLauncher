@@ -15,4 +15,7 @@ public sealed class UpdateManifest
 
     [JsonPropertyName("launchExecutable")]
     public string? LaunchExecutable { get; init; }
+
+    [JsonPropertyName("patchNotes")]
+    public string? PatchNotes { get; init; }
 }

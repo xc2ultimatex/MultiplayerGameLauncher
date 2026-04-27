@@ -12,4 +12,5 @@ public sealed class LauncherStatus
     public string? LocalVersion { get; init; }
     public string? RemoteVersion { get; init; }
     public string? LaunchPath { get; init; }
+    public string? PatchNotes { get; init; }
 }
