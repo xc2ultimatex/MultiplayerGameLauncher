@@ -1,33 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-    <ApplicationIcon Condition="Exists('Assets\icon.ico')">Assets\icon.ico</ApplicationIcon>
+    <!-- Players run this file -->
+    <AssemblyName>Launcher</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Bootstrap\**" />
-    <None Remove="Bootstrap\**" />
-    <Compile Remove="LauncherBroker\**" />
-    <None Remove="LauncherBroker\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="launcher.settings.json">
+    <None Update="bootstrap.settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Assets\icon.ico" Condition="Exists('Assets\icon.ico')" />
   </ItemGroup>
 
 </Project>

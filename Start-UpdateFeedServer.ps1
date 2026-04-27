@@ -57,7 +57,7 @@ function Get-LatestPayloadWriteTime {
         $items += Get-ChildItem -LiteralPath $Feed.PayloadDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
     $latest = $items | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    return if ($latest) { $latest.LastWriteTime } else { [DateTime]::MinValue }
+    if ($latest) { return $latest.LastWriteTime } else { return [DateTime]::MinValue }
 }
 
 function Test-ArchiveRefreshNeeded {

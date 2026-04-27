@@ -1,0 +1,3 @@
+Drop these two files here:
+  logo.png  — white transparent triangle logo (title bar, ~26x26)
+  icon.ico  — red/black triangle logo (taskbar + shortcut icon)

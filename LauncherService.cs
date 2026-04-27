@@ -9,10 +9,25 @@ internal static class LauncherService
 {
     private static readonly HttpClient HttpClient = new();
 
+    // Games are stored here so they survive launcher rebuilds/republishes
+    private static string ResolveGameDirectory(LauncherSettings settings)
+    {
+        // Absolute GameDirectoryName takes priority (legacy / manual override)
+        if (Path.IsPathRooted(settings.GameDirectoryName))
+            return settings.GameDirectoryName;
+
+        // Custom install drive / folder (e.g. "D:" → D:\MakeshiftStudios\Games\ShopGame)
+        string root = string.IsNullOrWhiteSpace(settings.InstallDrive)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MakeshiftStudios")
+            : Path.Combine(settings.InstallDrive.TrimEnd('\\', '/'), "MakeshiftStudios");
+
+        return Path.Combine(root, "Games", settings.GameDirectoryName);
+    }
+
     public static async Task<LauncherStatus> CheckForUpdatesAsync(string launcherRoot, LauncherSettings settings)
     {
         string sourceDirectory = settings.UpdateSourceDirectory.Trim();
-        string localGameDirectory = Path.Combine(launcherRoot, settings.GameDirectoryName);
+        string localGameDirectory = ResolveGameDirectory(settings);
         string localVersionPath = Path.Combine(localGameDirectory, settings.LocalVersionFileName);
         string? defaultLaunchPath = ResolveLaunchPath(localGameDirectory, settings.GameExecutableRelativePath);
 
@@ -92,7 +107,7 @@ internal static class LauncherService
             ? settings.GameExecutableRelativePath
             : manifest.LaunchExecutable.Trim();
 
-        string localGameDirectory = Path.Combine(launcherRoot, settings.GameDirectoryName);
+        string localGameDirectory = ResolveGameDirectory(settings);
         string localVersionPath = Path.Combine(localGameDirectory, settings.LocalVersionFileName);
         string? installedLaunchPath = ResolveLaunchPath(localGameDirectory, launchExecutableRelativePath);
 
@@ -104,7 +119,11 @@ internal static class LauncherService
 
         if (updateRequired)
         {
-            string stagingRoot = Path.Combine(launcherRoot, ".launcher-temp");
+            // Keep staging on the same volume as the game install to guarantee atomic Directory.Move
+            string stagingBase = string.IsNullOrWhiteSpace(settings.InstallDrive)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MakeshiftStudios")
+                : Path.Combine(settings.InstallDrive.TrimEnd('\\', '/'), "MakeshiftStudios");
+            string stagingRoot = Path.Combine(stagingBase, ".launcher-temp");
             string stagingDirectory = Path.Combine(stagingRoot, $"staging-{Guid.NewGuid():N}");
             string backupDirectory = Path.Combine(stagingRoot, $"backup-{Guid.NewGuid():N}");
 
@@ -137,6 +156,9 @@ internal static class LauncherService
 
             try
             {
+                // Ensure parent exists before Move (AppData path may not exist on first install)
+                Directory.CreateDirectory(Path.GetDirectoryName(localGameDirectory)!);
+
                 if (Directory.Exists(localGameDirectory))
                 {
                     Directory.Move(localGameDirectory, backupDirectory);
@@ -183,13 +205,21 @@ internal static class LauncherService
         };
     }
 
-    public static void LaunchGame(string launchPath, string launcherRoot)
+    public static void LaunchGame(string launchPath, string launcherRoot,
+                                  string? username = null, string? token = null)
     {
+        var args = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(username))
+            args.Append($"-launcher-user \"{username}\"");
+        if (!string.IsNullOrWhiteSpace(token))
+            args.Append($" -launcher-token \"{token}\"");
+
         Process.Start(new ProcessStartInfo
         {
-            FileName = launchPath,
+            FileName         = launchPath,
+            Arguments        = args.ToString().Trim(),
             WorkingDirectory = Path.GetDirectoryName(launchPath) ?? launcherRoot,
-            UseShellExecute = true
+            UseShellExecute  = true
         });
     }
 
@@ -338,10 +368,19 @@ internal static class LauncherService
             return null;
 
         string[] candidates = Directory.GetFiles(gameDirectory, "*.exe", SearchOption.TopDirectoryOnly)
-            .Where(path => !Path.GetFileName(path).StartsWith("UnityCrashHandler", StringComparison.OrdinalIgnoreCase))
+            .Where(path =>
+            {
+                string name = Path.GetFileName(path);
+                return !name.StartsWith("UnityCrashHandler", StringComparison.OrdinalIgnoreCase)
+                    && !name.EndsWith("_BurstDebugInformation_DoNotShip.exe", StringComparison.OrdinalIgnoreCase);
+            })
             .ToArray();
 
-        return candidates.Length == 1 ? candidates[0] : null;
+        if (candidates.Length == 0) return null;
+        if (candidates.Length == 1) return candidates[0];
+
+        // Multiple candidates: pick the largest — the main game exe is always the biggest
+        return candidates.OrderByDescending(p => new FileInfo(p).Length).First();
     }
 
     private static async Task<string?> ReadVersionIfPresentAsync(string versionPath)

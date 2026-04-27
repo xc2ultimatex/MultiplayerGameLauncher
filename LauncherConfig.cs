@@ -24,7 +24,7 @@ public sealed class LauncherConfig
             new LauncherSettings
             {
                 Name                     = "Camgirl Management Simulator",
-                UpdateSourceDirectory    = "http://DEV-MACHINE/CamgirlSim",
+                UpdateSourceDirectory    = "http://74.128.161.112:8080/CamgirlSim",
                 ManifestFileName         = "manifest.json",
                 PackageDirectoryName     = "payload",
                 GameDirectoryName        = "CamgirlSim",

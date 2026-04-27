@@ -27,4 +27,11 @@ public sealed class LauncherSettings
 
     [JsonPropertyName("patchNotes")]
     public string PatchNotes { get; init; } = "- No patch notes available yet.";
+
+    /// <summary>
+    /// Optional drive root for game install (e.g. "D:" or "D:\Games").
+    /// Leave empty to use the default AppData location.
+    /// </summary>
+    [JsonPropertyName("installDrive")]
+    public string InstallDrive { get; init; } = "";
 }
