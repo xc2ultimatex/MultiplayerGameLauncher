@@ -34,4 +34,11 @@ public sealed class LauncherSettings
     /// </summary>
     [JsonPropertyName("installDrive")]
     public string InstallDrive { get; init; } = "";
+
+    /// <summary>
+    /// Absolute path chosen by the user at install time.
+    /// When set, overrides the default AppData install location.
+    /// </summary>
+    [JsonPropertyName("installPath")]
+    public string? InstallPath { get; set; }
 }

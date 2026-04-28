@@ -12,6 +12,10 @@ internal static class LauncherService
     // Games are stored here so they survive launcher rebuilds/republishes
     private static string ResolveGameDirectory(LauncherSettings settings)
     {
+        // User-chosen install path takes top priority
+        if (!string.IsNullOrWhiteSpace(settings.InstallPath))
+            return settings.InstallPath;
+
         // Absolute GameDirectoryName takes priority (legacy / manual override)
         if (Path.IsPathRooted(settings.GameDirectoryName))
             return settings.GameDirectoryName;

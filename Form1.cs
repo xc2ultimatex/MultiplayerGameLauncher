@@ -385,9 +385,10 @@ public partial class Form1 : Form
             LauncherStatus status = await LauncherService.CheckForUpdatesAsync(_launcherRoot, entry.Settings);
             entry.Status = status;
 
-            if (status is { IsConfigured: true, RemoteManifestAvailable: true, UpdateAvailable: true, CanUpdateOrInstall: true })
+            if (status is { IsConfigured: true, RemoteManifestAvailable: true, UpdateAvailable: true, CanUpdateOrInstall: true }
+                && status.CanLaunch) // only auto-update already-installed games; never auto-install
             {
-                SetBusy(entry, status.CanLaunch ? "Updating..." : "Installing...");
+                SetBusy(entry, "Updating...");
                 await LauncherService.UpdateAsync(_launcherRoot, entry.Settings, launch: false);
 
                 // Verify with up to 5 retries — file system may need a moment to settle
@@ -494,10 +495,10 @@ public partial class Form1 : Form
             if (Directory.Exists(gameDir))
                 Directory.Delete(gameDir, recursive: true);
 
-            _selected.Status = null;
-            UpdateListItem(_selected);
-            RefreshRightPanel();
             SoundFX.Play(SoundType.Click);
+
+            // Re-check status so the UI shows "Not installed" + Install button
+            _ = AutoUpdateGameAsync(_selected);
         }
         catch (Exception ex)
         {
@@ -508,7 +509,36 @@ public partial class Form1 : Form
 
     private async Task InstallOrUpdateAsync(GameEntry entry)
     {
-        string label = entry.Status?.CanLaunch == true ? "Updating" : "Installing";
+        bool isFirstInstall = entry.Status?.CanLaunch != true;
+
+        if (isFirstInstall)
+        {
+            // Let the user pick a parent folder — we create the game subfolder inside it
+            string defaultParent = string.IsNullOrWhiteSpace(entry.Settings.InstallPath)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MakeshiftStudios", "Games")
+                : Path.GetDirectoryName(entry.Settings.InstallPath)
+                    ?? Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "MakeshiftStudios", "Games");
+
+            using var dlg = new FolderBrowserDialog
+            {
+                Description            = $"Choose where to install {entry.Settings.Name}\n\nA \"{entry.Settings.GameDirectoryName}\" folder will be created at the location you select.",
+                SelectedPath           = defaultParent,
+                UseDescriptionForTitle = false,
+                ShowNewFolderButton    = true
+            };
+
+            if (dlg.ShowDialog() != DialogResult.OK) return;
+
+            // Append the game directory name so install goes into e.g. D:\Games\ShopGame
+            entry.Settings.InstallPath = Path.Combine(dlg.SelectedPath, entry.Settings.GameDirectoryName);
+            await SaveConfigAsync();
+        }
+
+        string label = isFirstInstall ? "Installing" : "Updating";
         SetBusy(entry, $"{label}...");
 
         try
@@ -739,6 +769,16 @@ public partial class Form1 : Form
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private async Task SaveConfigAsync()
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(_config, JsonOptions.WriteIndented);
+            await File.WriteAllTextAsync(_configPath, json);
+        }
+        catch { /* non-fatal */ }
+    }
 
     private static void HideFile(string path)
     {

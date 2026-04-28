@@ -30,6 +30,15 @@ public partial class BootstrapForm : Form
             string? localVersion = await ReadVersionAsync(versionPath);
             GitHubRelease? release = await UpdaterService.FetchLatestReleaseAsync(settings.GitHubRepo);
 
+            if (release == null && !File.Exists(launcherPath))
+            {
+                MessageBox.Show(
+                    "Could not reach the update server and no local launcher was found.\n\nPlease re-download Launcher.exe and bootstrap.settings.json from GitHub.",
+                    "Download Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Close();
+                return;
+            }
+
             if (release != null &&
                 !string.Equals(release.TagName, localVersion, StringComparison.OrdinalIgnoreCase))
             {
@@ -55,6 +64,14 @@ public partial class BootstrapForm : Form
                     ShowProgress(false);
                     SetStatus("Update installed. Launching...");
                     await Task.Delay(400);
+                }
+                else if (!File.Exists(launcherPath))
+                {
+                    MessageBox.Show(
+                        $"Release {release.TagName} found but asset '{settings.AssetName}' was not attached.\n\nPlease re-publish the launcher via the dev tool.",
+                        "Asset Not Found", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Close();
+                    return;
                 }
             }
             else
@@ -123,13 +140,33 @@ public partial class BootstrapForm : Form
     {
         try
         {
+            // Prefer a settings file on disk (allows local overrides), then fall
+            // back to the copy embedded in the exe at build time.
+            string? json = null;
+
             if (File.Exists(_settingsPath))
             {
-                string json = File.ReadAllText(_settingsPath);
+                json = File.ReadAllText(_settingsPath);
+            }
+            else
+            {
+                var asm  = System.Reflection.Assembly.GetExecutingAssembly();
+                string resourceName = asm.GetManifestResourceNames()
+                    .FirstOrDefault(n => n.EndsWith("bootstrap.settings.json",
+                        StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+
+                if (!string.IsNullOrEmpty(resourceName))
+                {
+                    using Stream stream = asm.GetManifestResourceStream(resourceName)!;
+                    using StreamReader reader = new(stream);
+                    json = reader.ReadToEnd();
+                }
+            }
+
+            if (json != null)
                 return JsonSerializer.Deserialize<BootstrapSettings>(json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                     ?? BootstrapSettings.Default;
-            }
         }
         catch { }
         return BootstrapSettings.Default;

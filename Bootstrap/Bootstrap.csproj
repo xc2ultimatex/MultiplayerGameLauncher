@@ -15,9 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="bootstrap.settings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <EmbeddedResource Include="bootstrap.settings.json" />
   </ItemGroup>
 
 </Project>
