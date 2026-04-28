@@ -56,10 +56,6 @@ TemporaryDependencyNodeTargetIdentifier=net8.0-windows
 
 [sourceFiles]
 AuthService.cs
-Bootstrap/obj/Release/net8.0-windows/win-x64/
- .NETCoreApp,Version=v8.0.AssemblyAttributes.cs
- Bootstrap.AssemblyInfo.cs
- Bootstrap.GlobalUsings.g.cs
 Form1.cs
 Form1.Designer.cs
 JsonOptions.cs
